@@ -85,3 +85,137 @@ supabase/        # SQL auxiliar (Storage RLS)
 3. Colar descrição da vaga → analisar
 4. Gerar currículo adaptado → abrir no Studio
 5. Ajustar Markdown, tema e layout → exportar PDF
+
+## Serviço de exportação PDF (`services/pdf`)
+
+API HTTP separada do Next. Recebe um currículo em Markdown e devolve um PDF A4. Não usa banco nem Supabase.
+
+### Abordagem escolhida
+
+Chromium headless (puppeteer-core) renderiza os mesmos componentes do preview (`ResumeDocument` e `DecorativeShapes`). O bundle é feito com esbuild e lê `src/components/preview`, `src/config/templates` e `src/utils/parseResume`.
+
+Alternativa descartada: pdfmake no servidor. Ela reimplementaria o layout em um segundo renderizador, que já diverge do preview. O editor continua usando pdfmake no browser.
+
+Compensações do Chromium em container: roda com `--no-sandbox`, como usuário `node`, com `cap_drop: ALL`, `no-new-privileges`, sistema de arquivos somente leitura, JavaScript desligado e bloqueio de toda requisição de rede exceto `data:`. Imagens remotas no Markdown não carregam no PDF.
+
+### Arquitetura de arquivos
+
+- `services/pdf/src/server.ts`: rotas HTTP.
+- `services/pdf/src/validate.ts`: validação do corpo e mesclagem de `theme` e `layout` sobre o template.
+- `services/pdf/src/pdf.ts`: pool do Chromium, fila FIFO e tempo limite.
+- `services/pdf/src/render-html.tsx`: HTML das páginas A4.
+- `services/pdf/Dockerfile`: imagem `linux/arm64`. O builder roda na arquitetura do runner. O estágio final instala `chromium`, `fonts-inter` e `fonts-liberation` pelo apt do Debian. Não usa o Chromium snap.
+
+### API
+
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| GET | `/health` | não | `200 {"status":"ok"}` |
+| GET | `/api/templates` | sim | Lista `[{ id, name, description }]` |
+| POST | `/api/resumes` | sim | Gera o PDF |
+
+Auth: `Authorization: Bearer <PDF_API_KEY>`. Sem chave configurada, a auth fica desligada (somente desenvolvimento).
+
+Corpo de `POST /api/resumes` (JSON, máximo 1 MB):
+
+```json
+{
+  "markdown": "---\nnome: Ana Souza\n...",
+  "template": "classico",
+  "theme": { "colors": { "primary": "#1e3a5f" } },
+  "layout": { "columnWidths": { "left": 30, "main": 70, "right": 0 } }
+}
+```
+
+- `markdown`: obrigatório.
+- `template`: `classico` (padrão) ou `sidebar`.
+- `theme` e `layout`: parciais. São mesclados sobre o template. Em `layout.sections`, o merge é feito pelo `id`. `columnWidths` precisa somar 100.
+
+Respostas:
+
+- `200`: `application/pdf`, com `Content-Disposition: attachment; filename="curriculo.pdf"`.
+- `400 {"error"}`: corpo inválido, front matter inválido, nome ausente, template desconhecido ou tema/layout fora das regras.
+- `401 {"error"}`: chave ausente ou errada.
+- `404 {"error"}`: rota desconhecida.
+- `413 {"error"}`: corpo maior que 1 MB.
+- `500 {"error"}`: falha na renderização.
+
+Exemplo:
+
+```bash
+curl -s -o curriculo.pdf \
+  -H "Authorization: Bearer $PDF_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data-binary @<(jq -Rs '{markdown: ., template: "sidebar"}' examples/curriculo-exemplo.md) \
+  http://127.0.0.1:3333/api/resumes
+```
+
+### Formato do Markdown
+
+Front matter YAML simples no início, com pares `chave: valor`:
+
+- `nome` (obrigatória), `cargo`, `email`, `telefone`, `linkedin`, `localizacao`.
+- `foto`: lida e validada como texto, mas não renderizada. A prévia do editor também não mostra foto.
+
+Sem front matter, vale o cabeçalho antigo: `# Nome | Cargo` seguido de linhas `> contato`. No editor, um front matter inválido não quebra a prévia. Quem valida é o serviço.
+
+Seções aceitas: `## resumo`, `## experiencia`, `## formacao`, `## projetos`, `## hard-skills`, `## soft-skills`, `## contato`. Os rótulos no PDF são fixos em pt-BR, mesmo que o Markdown traga outro texto depois do `|`.
+
+Veja um exemplo completo em `examples/curriculo-exemplo.md`.
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Função |
+|---|---|---|
+| `PDF_API_KEY` | vazio | Obrigatória com `NODE_ENV=production`. Sem ela, o processo sai com código 1. |
+| `PORT` | `3333` | Porta interna. |
+| `PDF_MAX_CONCURRENCY` | `2` | Renderizações simultâneas (1 a 8). |
+| `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/chromium` na imagem | Só para rodar fora do Docker. |
+
+### Executar localmente
+
+Com Docker (imagem arm64, ou amd64 se preferir testar localmente):
+
+```bash
+docker buildx build --platform linux/arm64 -f services/pdf/Dockerfile -t resume-markdown-studio:local .
+docker run --rm -p 127.0.0.1:3333:3333 -e PDF_API_KEY=troque-esta-chave resume-markdown-studio:local
+```
+
+Sem Docker, com um Chrome instalado no host:
+
+```bash
+npm --prefix services/pdf install
+npm --prefix services/pdf run build
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable node services/pdf/dist/server.mjs
+```
+
+### Operação na VM
+
+- Imagem `linux/arm64`, para a VM Oracle (Ubuntu, aarch64). O Chromium vem do apt do Debian dentro da imagem, não do snap do Ubuntu.
+- O serviço escuta em `0.0.0.0` na porta `PORT` (padrão `3333`).
+- As rotas ficam na raiz do serviço: `GET /health`, `GET /api/templates` e `POST /api/resumes`. O Nginx da VM remove o prefixo `/pdf/` antes de encaminhar. Não adicione `/pdf` nas rotas.
+- O container se chama `pdf-service` e fica só na rede `proxy`. Não há banco.
+- O Nginx da VM está com `client_max_body_size 2m`. O limite de 1 MB do serviço responde `413` em JSON antes disso.
+
+### Deploy
+
+O workflow `.github/workflows/deploy.yml` roda em push na `main` quando há mudanças nos caminhos do serviço:
+
+1. Gera a imagem `linux/arm64` com QEMU e buildx e publica em `ghcr.io/otbox/resume-markdown-studio` com a tag do SHA.
+2. Copia `deploy/compose.yaml` e `deploy/deploy.sh` para `/opt/services/apps/resume-markdown-studio/` na VM.
+3. Roda `deploy.sh` com a referência por digest. O script faz `pull`, `up`, aguarda `healthy` por até 60 s e reverte para `.deploy.previous.env` se falhar.
+
+Passos manuais, feitos uma vez pelo usuário:
+
+- Na VM, criar `/opt/services/apps/resume-markdown-studio/` e um arquivo `.env` com `PDF_API_KEY`, com `chmod 600`.
+- No GitHub, criar o environment `production` com os secrets `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` e `SSH_KNOWN_HOSTS`.
+- Se o pacote no GHCR for privado, rodar `docker login ghcr.io` na VM.
+- Criar o registro DNS e o vhost do Nginx quando o domínio for definido. O vhost aponta para `pdf-service:3333` na rede `proxy`. O serviço não publica porta no host.
+
+### Limitações conhecidas
+
+- Imagens remotas em Markdown não entram no PDF (bloqueio de rede).
+- `foto` não é renderizada.
+- A fonte Inter depende do pacote `fonts-inter`. Sem ele, o PDF usa outra fonte de sistema.
+- Chromium roda com `--no-sandbox` dentro do container, com as compensações acima.
+- A imagem `linux/arm64` não foi construída nem executada na última verificação, porque o daemon Docker estava parado no ambiente de desenvolvimento. O build, o workflow e o compose ainda precisam de uma execução real antes do primeiro deploy.
