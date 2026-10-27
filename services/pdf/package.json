@@ -1,0 +1,20 @@
+{
+  "name": "resume-markdown-studio-pdf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "npm run typecheck && esbuild src/server.ts --bundle --platform=node --format=esm --target=node22 --jsx=automatic --external:puppeteer-core --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/server.mjs",
+    "start": "node dist/server.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.16.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}

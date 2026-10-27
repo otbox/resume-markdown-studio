@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+.next
+.git
+.worktrees
+.agents
+.kiro
+.github
+deploy
+.env*
+!.env.example
+services/pdf/dist
