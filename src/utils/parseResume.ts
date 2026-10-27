@@ -1,7 +1,10 @@
+import { parseFrontMatter } from "./frontMatter";
+
 export interface ResumeHeader {
   name: string;
   role: string;
   contacts: string[];
+  photo?: string;
 }
 
 export interface ResumeSection {
@@ -16,15 +19,30 @@ export interface ParsedResume {
 }
 
 export function parseResume(markdown: string): ParsedResume {
-  const lines = markdown.split("\n");
+  const frontMatter = parseFrontMatter(markdown);
+  const lines = (frontMatter.hasFrontMatter ? frontMatter.body : markdown).split("\n");
   let name = "";
   let role = "";
   const contacts: string[] = [];
   const sections: ResumeSection[] = [];
+  let photo: string | undefined;
 
   let currentSection: ResumeSection | null = null;
   let contentLines: string[] = [];
   let headerParsed = false;
+
+  if (frontMatter.hasFrontMatter) {
+    const { data } = frontMatter;
+    name = data.nome ?? "";
+    role = data.cargo ?? "";
+    contacts.push(
+      ...[data.email, data.telefone, data.localizacao, data.linkedin].filter(
+        (contact): contact is string => !!contact
+      )
+    );
+    photo = data.foto;
+    headerParsed = true;
+  }
 
   const flushSection = () => {
     if (currentSection) {
@@ -72,7 +90,7 @@ export function parseResume(markdown: string): ParsedResume {
   flushSection();
 
   return {
-    header: { name, role, contacts },
+    header: { name, role, contacts, photo },
     sections,
   };
 }

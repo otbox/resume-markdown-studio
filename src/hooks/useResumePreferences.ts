@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { defaultTheme } from "@/config/defaultTheme";
-import { defaultLayout } from "@/config/defaultLayout";
+import { getTemplate } from "@/config/templates";
 import type { ThemeConfig } from "@/types/theme";
 import type { LayoutConfig } from "@/types/layout";
 
 export function useResumePreferences() {
-  const [theme, setTheme] = useState<ThemeConfig>(defaultTheme);
-  const [layout, setLayout] = useState<LayoutConfig>(defaultLayout);
+  const [theme, setTheme] = useState<ThemeConfig>(() => getTemplate("classico").theme);
+  const [layout, setLayout] = useState<LayoutConfig>(() => getTemplate("classico").layout);
   const [loading, setLoading] = useState(true);
   const [templateId, setTemplateId] = useState<string | null>(null);
 
