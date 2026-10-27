@@ -159,6 +159,8 @@ Front matter YAML simples no início, com pares `chave: valor`:
 
 Sem front matter, vale o cabeçalho antigo: `# Nome | Cargo` seguido de linhas `> contato`. No editor, um front matter inválido não quebra a prévia. Quem valida é o serviço.
 
+Régua `---` no início: um documento que começa com `---` é lido como front matter, mesmo que a linha seja uma régua. Se houver outro `---` mais abaixo, o trecho entre os dois é tratado como front matter. No serviço, linhas que não são `chave: valor` geram `400`. No editor, esse trecho some da prévia sem aviso. Para evitar, não comece o Markdown com `---` e não use régua no topo.
+
 Seções aceitas: `## resumo`, `## experiencia`, `## formacao`, `## projetos`, `## hard-skills`, `## soft-skills`, `## contato`. Os rótulos no PDF são fixos em pt-BR, mesmo que o Markdown traga outro texto depois do `|`.
 
 Veja um exemplo completo em `examples/curriculo-exemplo.md`.
@@ -181,9 +183,10 @@ docker buildx build --platform linux/arm64 -f services/pdf/Dockerfile -t resume-
 docker run --rm -p 127.0.0.1:3333:3333 -e PDF_API_KEY=troque-esta-chave resume-markdown-studio:local
 ```
 
-Sem Docker, com um Chrome instalado no host:
+Sem Docker, com um Chrome instalado no host. Instale antes as dependências da raiz, porque `react`, `react-dom` e `react-markdown` são resolvidos pela `node_modules` da raiz:
 
 ```bash
+npm install
 npm --prefix services/pdf install
 npm --prefix services/pdf run build
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable node services/pdf/dist/server.mjs
@@ -193,9 +196,11 @@ PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable node services/pdf/dist/s
 
 - Imagem `linux/arm64`, para a VM Oracle (Ubuntu, aarch64). O Chromium vem do apt do Debian dentro da imagem, não do snap do Ubuntu.
 - O serviço escuta em `0.0.0.0` na porta `PORT` (padrão `3333`).
-- As rotas ficam na raiz do serviço: `GET /health`, `GET /api/templates` e `POST /api/resumes`. O Nginx da VM remove o prefixo `/pdf/` antes de encaminhar. Não adicione `/pdf` nas rotas.
+- As rotas do serviço são `GET /health`, `GET /api/templates` e `POST /api/resumes`, sem prefixo.
 - O container se chama `pdf-service` e fica só na rede `proxy`. Não há banco.
-- O Nginx da VM está com `client_max_body_size 2m`. O limite de 1 MB do serviço responde `413` em JSON antes disso.
+- Requisitos para o vhost do Nginx (ainda não configurado; o arquivo da VM está como `.pending`, e a configuração atual não foi lida):
+  - Remover o prefixo `/pdf/` antes de encaminhar (`proxy_pass http://pdf-service:3333/;`), para que `/pdf/api/resumes` chegue como `/api/resumes`.
+  - `client_max_body_size` de pelo menos 2m, para que o limite de 1 MB do serviço responda `413` em JSON e não o Nginx.
 
 ### Deploy
 
