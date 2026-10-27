@@ -1,0 +1,23 @@
+name: resume-markdown-studio
+
+services:
+  pdf-service:
+    image: ${APP_IMAGE:?APP_IMAGE obrigatório}
+    container_name: pdf-service
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "3333"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

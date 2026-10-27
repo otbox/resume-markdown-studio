@@ -1,0 +1,93 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/pdf/**"
+      - "src/components/preview/**"
+      - "src/config/**"
+      - "src/utils/**"
+      - "src/types/**"
+      - "src/constants/**"
+      - ".dockerignore"
+      - "tsconfig.json"
+      - "package.json"
+      - "package-lock.json"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-resume-markdown-studio
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/pdf/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/otbox/resume-markdown-studio:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar chave SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Enviar arquivos de deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            deploy/compose.yaml deploy/deploy.sh \
+            "$SSH_USER@$SSH_HOST:/opt/services/apps/resume-markdown-studio/"
+
+      - name: Executar deploy na VM
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
+            "bash /opt/services/apps/resume-markdown-studio/deploy.sh ghcr.io/otbox/resume-markdown-studio@$IMAGE_DIGEST"
