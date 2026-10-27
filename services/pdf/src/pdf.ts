@@ -3,6 +3,8 @@ import { A4_HEIGHT } from "@/constants/a4";
 import type { Config } from "./config";
 import { buildMeasureHtml, buildResumeHtml, type RenderInput } from "./render-html";
 
+const PAGE_CLOSE_TIMEOUT_MS = 5_000;
+
 const LAUNCH_ARGS = [
   "--no-sandbox",
   "--disable-setuid-sandbox",
@@ -25,7 +27,7 @@ export class PdfRenderer {
   private active = 0;
   private readonly waiting: Array<() => void> = [];
 
-  constructor(private readonly config: Config) {}
+  constructor(private readonly config: Config) { }
 
   async start(): Promise<void> {
     await this.getBrowser();
@@ -45,10 +47,21 @@ export class PdfRenderer {
       try {
         return await withTimeout(this.renderPage(page, input), this.config.renderTimeoutMs);
       } finally {
-        await page.close().catch(() => undefined);
+        await this.closePage(page);
       }
     } finally {
       this.release();
+    }
+  }
+
+  /** Fecha a página com tempo limite. Se travar, descarta o navegador para liberar a vaga. */
+  private async closePage(page: Page): Promise<void> {
+    try {
+      await withTimeout(page.close(), PAGE_CLOSE_TIMEOUT_MS);
+    } catch {
+      const browser = this.browser;
+      this.browser = null;
+      browser?.process()?.kill("SIGKILL");
     }
   }
 
