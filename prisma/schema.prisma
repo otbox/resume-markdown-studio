@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum SkillCategory {
+  HARD
+  SOFT
+}
+
+model Profile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  fullName     String
+  headline     String?
+  email        String?
+  phone        String?
+  location     String?
+  linkedin     String?
+  github       String?
+  summary      String?  @db.Text
+  sourcePdfUrl String?
+  experiences  Experience[]
+  educations   Education[]
+  projects     Project[]
+  skills       Skill[]
+  resumes      GeneratedResume[]
+  jobApps      JobApplication[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Experience {
+  id           String   @id @default(cuid())
+  profileId    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company      String
+  role         String
+  location     String?
+  startDate    String?
+  endDate      String?
+  isCurrent    Boolean  @default(false)
+  bullets      String[]
+  technologies String[]
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([profileId])
+}
+
+model Education {
+  id          String   @id @default(cuid())
+  profileId   String
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institution String
+  degree      String
+  field       String?
+  startDate   String?
+  endDate     String?
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([profileId])
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  profileId    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  url          String?
+  description  String?  @db.Text
+  technologies String[]
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([profileId])
+}
+
+model Skill {
+  id        String        @id @default(cuid())
+  profileId String
+  profile   Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  category  SkillCategory @default(HARD)
+  level     String?
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([profileId])
+}
+
+model ResumeTemplate {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  themeJson  Json
+  layoutJson Json
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model JobApplication {
+  id               String            @id @default(cuid())
+  profileId        String
+  profile          Profile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title            String
+  company          String?
+  jobUrl           String?
+  rawJobText       String            @db.Text
+  analysisJson     Json?
+  generatedResumes GeneratedResume[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([profileId])
+}
+
+model GeneratedResume {
+  id               String          @id @default(cuid())
+  profileId        String
+  profile          Profile         @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobApplicationId String?
+  jobApplication   JobApplication? @relation(fields: [jobApplicationId], references: [id], onDelete: SetNull)
+  templateId       String?
+  markdownContent  String          @db.Text
+  version          Int             @default(1)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([profileId])
+  @@index([jobApplicationId])
+}

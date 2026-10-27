@@ -1,66 +1,87 @@
-# Resume Markdown Studio
+# Resume AI Tailor
 
-Editor de currículo com preview A4 em tempo real. Baseado em **Vite + React + TypeScript**.
+Sistema multi-usuário que analisa vagas de emprego com IA (Gemini) e gera currículos adaptados ao seu perfil, com preview A4 e exportação PDF.
 
-## Conceito
+## Stack
 
-- O conteúdo vem de `public/resume.md`
-- A aparência é configurada por `theme.json` (exportável pelo app)
-- A organização das seções é configurada por `layout.json` (exportável)
+- **Next.js 15** (App Router)
+- **Supabase** (Auth, Postgres, Storage)
+- **Prisma ORM**
+- **Google Gemini** (análise de vaga, extração de PDF, geração de currículo)
+- **Deploy:** Vercel
 
 ## Funcionalidades
 
-- ✅ Editor Markdown inline
-- ✅ Preview A4 fiel (794×1123px)
-- ✅ Exportar PDF via `html2pdf.js`
-- ✅ Importar/exportar `.md`, `layout.json`, `theme.json`
-- ✅ Painel de Layout: visibilidade, ordem, região (esq/principal/dir) das seções
-- ✅ Ajuste real de largura das colunas esquerda, principal e direita
-- ✅ Painel de Tema: cores, tipografia, raio, espaçamento e formas decorativas SVG
-- ✅ Seções: resumo, formação, experiência, projetos, hard-skills, soft-skills, contato
-- ✅ Estado persistido em `sessionStorage` (sem backend)
+- Login/cadastro multi-usuário (Supabase Auth)
+- Importação de currículo via PDF com extração IA
+- CRUD de perfil, experiências, formação, projetos e skills
+- Análise de vaga com match score, gaps e recomendações
+- Geração de currículo adaptado em Markdown
+- Resume Studio: editor + preview A4 + tema/layout reutilizável + export PDF
+
+## Setup local
+
+### 1. Instalar dependências
+
+```bash
+npm install
+```
+
+### 2. Configurar variáveis de ambiente
+
+Copie `.env.example` para `.env.local` e preencha:
+
+```bash
+cp .env.example .env.local
+```
+
+### 3. Supabase
+
+1. Crie um projeto em [supabase.com](https://supabase.com)
+2. Copie URL e anon key para `.env.local`
+3. Copie connection strings (pooler + direct) para Prisma
+4. Execute a migration: `npm run db:deploy`
+5. Execute `supabase/storage-setup.sql` no SQL Editor
+6. Habilite Auth por e-mail/senha no dashboard
+
+### 4. Gemini
+
+Obtenha uma API key em [Google AI Studio](https://aistudio.google.com/) e adicione `GEMINI_API_KEY` ao `.env.local`.
+
+### 5. Rodar
+
+```bash
+npm run dev
+```
+
+Acesse [http://localhost:3000](http://localhost:3000).
+
+## Deploy Vercel
+
+1. Conecte o repositório GitHub à Vercel
+2. Configure todas as env vars do `.env.example`
+3. Build command: `prisma generate && next build` (já configurado)
+4. Antes do primeiro deploy, rode `npm run db:deploy` com `DIRECT_URL` apontando para o Supabase
 
 ## Estrutura
 
 ```
 src/
-  components/
-    panels/     # SidePanel, LayoutPanel, ThemePanel
-    preview/    # ResumePreview, ResumeHeader, ResumeSection, DecorativeShapes
-  config/       # defaultLayout.ts, defaultTheme.ts
-  hooks/        # usePdfExport.ts
-  types/        # index.ts
-  utils/        # parseResume.ts, exportImport.ts
-  App.tsx
-  main.tsx
-  index.css
-public/
-  resume.md     # Conteúdo padrão do currículo
+  app/           # Pages e API routes
+  components/    # Preview A4, painéis, forms
+  config/        # Tema e layout default
+  hooks/         # usePdfExport
+  lib/           # Prisma, Supabase, Gemini
+  types/         # Schemas Zod e tipos
+  utils/         # parseResume, profileToMarkdown
+prisma/          # Schema e migrations
+supabase/        # SQL auxiliar (Storage RLS)
 ```
 
-## Como rodar
+## Fluxo do usuário
 
-```bash
-npm install
-npm run dev
-```
-
-## Seções suportadas no Markdown
-
-Use headings `## ` com os IDs abaixo:
-
-| ID | Label |
-|---|---|
-| `resumo` | Resumo |
-| `experiencia` | Experiência |
-| `formacao` | Formação |
-| `projetos` | Projetos |
-| `hard-skills` | Hard Skills |
-| `soft-skills` | Soft Skills |
-| `contato` | Contato |
-
-O cabeçalho (nome, cargo, contatos) é detectado automaticamente pelo `# Título` no topo do arquivo.
-
-## Exportação PDF
-
-O PDF é gerado via `html2pdf.js` com configuração A4, escala 2x para qualidade. O elemento `#resume-a4` é renderizado diretamente — sem servidor.
+1. Criar conta → configurar perfil (PDF ou manual)
+2. Adicionar/editar experiências
+3. Colar descrição da vaga → analisar
+4. Gerar currículo adaptado → abrir no Studio
+5. Ajustar Markdown, tema e layout → exportar PDF
