@@ -96,7 +96,7 @@ Chromium headless (puppeteer-core) renderiza os mesmos componentes do preview (`
 
 Alternativa descartada: pdfmake no servidor. Ela reimplementaria o layout em um segundo renderizador, que já diverge do preview. O editor continua usando pdfmake no browser.
 
-Compensações do Chromium em container: roda com `--no-sandbox`, como usuário `node`, com `cap_drop: ALL`, `no-new-privileges`, sistema de arquivos somente leitura, JavaScript desligado e bloqueio de toda requisição de rede exceto `data:`. Imagens remotas no Markdown não carregam no PDF.
+Compensações do Chromium em container: roda com `--no-sandbox`, como usuário `node`, com `cap_drop: ALL`, `no-new-privileges`, sistema de arquivos somente leitura, JavaScript desligado e bloqueio de toda requisição de rede exceto `data:`. Imagens remotas no Markdown não carregam no PDF. Com `HOME` somente leitura, o Chromium só sobe com `HOME=/tmp` (já definido na imagem), `--no-zygote`, `--disable-breakpad` e `--disable-crash-reporter`.
 
 ### Arquitetura de arquivos
 
@@ -225,4 +225,4 @@ Passos manuais, feitos uma vez pelo usuário:
 - `foto` não é renderizada.
 - A fonte Inter depende do pacote `fonts-inter`. Sem ele, o PDF usa outra fonte de sistema.
 - Chromium roda com `--no-sandbox` dentro do container, com as compensações acima.
-- A imagem `linux/arm64` não foi construída nem executada na última verificação, porque o daemon Docker estava parado no ambiente de desenvolvimento. O build, o workflow e o compose ainda precisam de uma execução real antes do primeiro deploy.
+- A imagem `linux/arm64` foi construída e testada no host x86_64, com QEMU. Sob emulação, cada PDF levou de 4 a 14 s (na VM arm64 nativa deve ser bem mais rápido, ainda não medido). O workflow de deploy e o compose ainda não rodaram na VM.
