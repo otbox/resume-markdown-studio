@@ -5,7 +5,10 @@ services:
     image: ${APP_IMAGE:?APP_IMAGE obrigatório}
     container_name: pdf-service
     restart: unless-stopped
+    init: true
     env_file: .env
+    environment:
+      NODE_ENV: production
     expose:
       - "3333"
     read_only: true
