@@ -11,6 +11,10 @@ const LAUNCH_ARGS = [
   "--disable-dev-shm-usage",
   "--disable-gpu",
   "--font-render-hinting=none",
+  // Container com HOME somente leitura: sem crashpad e sem zygote o Chromium sobe.
+  "--no-zygote",
+  "--disable-breakpad",
+  "--disable-crash-reporter",
 ];
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {

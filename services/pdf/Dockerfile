@@ -28,7 +28,8 @@ RUN apt-get update \
 
 ENV NODE_ENV=production \
     PORT=3333 \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    HOME=/tmp
 
 WORKDIR /app/services/pdf
 COPY --from=builder /app/services/pdf/dist ./dist
