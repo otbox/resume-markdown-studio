@@ -10,6 +10,7 @@ export interface Config {
   apiKey: string | null;
   production: boolean;
   maxConcurrency: number;
+  queueMax: number;
   chromePath: string | undefined;
   renderTimeoutMs: number;
 }
@@ -35,7 +36,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     port: parseIntInRange(env.PORT, 3333, 1, 65535, "PORT"),
     apiKey,
     production,
-    maxConcurrency: parseIntInRange(env.PDF_MAX_CONCURRENCY, 2, 1, 8, "PDF_MAX_CONCURRENCY"),
+    maxConcurrency: parseIntInRange(env.RENDER_CONCURRENCY, 2, 1, 8, "RENDER_CONCURRENCY"),
+    queueMax: parseIntInRange(env.RENDER_QUEUE_MAX, 10, 0, 100, "RENDER_QUEUE_MAX"),
     chromePath: env.PUPPETEER_EXECUTABLE_PATH?.trim() || undefined,
     renderTimeoutMs: 30_000,
   };

@@ -2,7 +2,7 @@ import http from "node:http";
 import { listTemplates } from "@/config/templates";
 import { isAuthorized } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
-import { PdfRenderer } from "./pdf";
+import { PdfRenderer, QueueFullError } from "./pdf";
 import { parseRenderRequest } from "./validate";
 
 const MAX_BODY_BYTES = 1_048_576;
@@ -91,6 +91,10 @@ async function handlePdf(req: http.IncomingMessage, res: http.ServerResponse, re
     });
     res.end(pdf);
   } catch (error) {
+    if (error instanceof QueueFullError) {
+      sendJson(res, 503, { error: "Serviço ocupado. Tente novamente em instantes." }, { "Retry-After": "5" });
+      return;
+    }
     console.error(`falha ao renderizar PDF: ${errorMessage(error)}`);
     sendJson(res, 500, { error: "Falha ao renderizar PDF" });
   }

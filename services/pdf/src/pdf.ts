@@ -21,6 +21,13 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
+export class QueueFullError extends Error {
+  constructor() {
+    super("fila de renderização cheia");
+    this.name = "QueueFullError";
+  }
+}
+
 export class PdfRenderer {
   private browser: Browser | null = null;
   private launching: Promise<Browser> | null = null;
@@ -114,11 +121,17 @@ export class PdfRenderer {
     return Buffer.from(pdf);
   }
 
-  /** Fila FIFO: a vaga liberada vai direto para o próximo da fila. */
+  /**
+   * Fila FIFO com teto: a vaga liberada vai direto para o próximo da fila.
+   * Com a fila cheia, rejeita com QueueFullError sem enfileirar.
+   */
   private acquire(): Promise<void> {
     if (this.active < this.config.maxConcurrency) {
       this.active++;
       return Promise.resolve();
+    }
+    if (this.waiting.length >= this.config.queueMax) {
+      return Promise.reject(new QueueFullError());
     }
     return new Promise((resolve) => this.waiting.push(resolve));
   }
