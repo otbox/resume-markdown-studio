@@ -139,6 +139,7 @@ Respostas:
 - `404 {"error"}`: rota desconhecida.
 - `413 {"error"}`: corpo maior que 1 MB.
 - `500 {"error"}`: falha na renderização.
+- `503 {"error"}` com `Retry-After: 5`: as renderizações estão ocupadas e a fila de espera (`RENDER_QUEUE_MAX`) está cheia. O cliente deve tentar de novo depois do intervalo indicado. O pedido não entra na fila.
 
 Exemplo:
 
@@ -171,7 +172,8 @@ Veja um exemplo completo em `examples/curriculo-exemplo.md`.
 |---|---|---|
 | `PDF_API_KEY` | vazio | Obrigatória com `NODE_ENV=production`. Sem ela, o processo sai com código 1. |
 | `PORT` | `3333` | Porta interna. |
-| `PDF_MAX_CONCURRENCY` | `2` | Renderizações simultâneas (1 a 8). |
+| `RENDER_CONCURRENCY` | `2` | Renderizações simultâneas (1 a 8). Cada uma usa uma página do Chromium, com memória significativa. |
+| `RENDER_QUEUE_MAX` | `10` | Pedidos aguardando vaga (0 a 100). Quando a fila está cheia, a API responde `503`. |
 | `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/chromium` na imagem | Só para rodar fora do Docker. |
 
 ### Executar localmente
