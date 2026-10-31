@@ -9,6 +9,7 @@
     "start": "node dist/server.mjs"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "puppeteer-core": "^25.16.0",
     "zod": "^3.25.76"
   },

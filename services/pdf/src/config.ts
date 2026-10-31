@@ -15,6 +15,8 @@ export interface Config {
   renderTimeoutMs: number;
   latexEngine: string;
   latexTimeoutMs: number;
+  geminiApiKey: string | null;
+  geminiModel: string;
 }
 
 function parseIntInRange(raw: string | undefined, fallback: number, min: number, max: number, name: string): number {
@@ -44,5 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     renderTimeoutMs: 30_000,
     latexEngine: env.LATEX_ENGINE?.trim() || "pdflatex",
     latexTimeoutMs: parseIntInRange(env.LATEX_TIMEOUT_MS, 30_000, 1_000, 120_000, "LATEX_TIMEOUT_MS"),
+    geminiApiKey: (env.GEMINI_API_KEY ?? "").trim() || null,
+    geminiModel: env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
   };
 }

@@ -6,6 +6,8 @@ import { PdfRenderer, QueueFullError } from "./pdf";
 import { LatexRenderer, LatexCompileError, QueueFullError as LatexQueueFullError } from "./latex";
 import { parseRenderRequest } from "./validate";
 import { parseLatexRequest } from "./validate-latex";
+import { parseGenerateRequest } from "./validate-generate";
+import { generateLatexResume, GeminiError } from "./gemini";
 
 const MAX_BODY_BYTES = 1_048_576;
 const TOO_LARGE_MESSAGE = "Corpo maior que 1 MB";
@@ -160,6 +162,97 @@ async function handleLatex(
   }
 }
 
+async function handleGenerate(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  renderer: LatexRenderer,
+  config: Config
+): Promise<void> {
+  if (!config.geminiApiKey) {
+    sendJson(res, 501, { error: "Geração por IA desligada: GEMINI_API_KEY não configurada." });
+    return;
+  }
+
+  const declaredLength = Number(req.headers["content-length"] ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    sendTooLarge(res);
+    return;
+  }
+
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      sendTooLarge(res);
+      return;
+    }
+    throw error;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    sendJson(res, 400, { error: "Corpo deve ser JSON válido" });
+    return;
+  }
+
+  const parsed = parseGenerateRequest(body);
+  if (!parsed.ok) {
+    sendJson(res, 400, { error: parsed.error });
+    return;
+  }
+
+  // 1) Gemini gera o .tex.
+  let latex: string;
+  try {
+    latex = await generateLatexResume({
+      apiKey: config.geminiApiKey,
+      model: config.geminiModel,
+      profile: parsed.value.profile,
+      job: parsed.value.job,
+      jobAnalysis: parsed.value.jobAnalysis,
+    });
+  } catch (error) {
+    if (error instanceof GeminiError) {
+      console.error(`falha no Gemini: ${error.message}`);
+      sendJson(res, 502, { error: "Falha ao gerar o currículo com a IA" });
+      return;
+    }
+    throw error;
+  }
+
+  // 2) Mesma trava de segurança da rota /api/resumes/latex (barra \input etc.).
+  const safe = parseLatexRequest({ latex });
+  if (!safe.ok) {
+    sendJson(res, 422, { error: "A IA devolveu um LaTeX inválido", detail: safe.error });
+    return;
+  }
+
+  // 3) Compila e devolve o PDF.
+  try {
+    const pdf = await renderer.render(safe.value.latex);
+    res.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": 'attachment; filename="curriculo.pdf"',
+      "Content-Length": pdf.length,
+    });
+    res.end(pdf);
+  } catch (error) {
+    if (error instanceof LatexQueueFullError) {
+      sendJson(res, 503, { error: "Serviço ocupado. Tente novamente em instantes." }, { "Retry-After": "5" });
+      return;
+    }
+    if (error instanceof LatexCompileError) {
+      sendJson(res, 422, { error: "O LaTeX gerado não compilou", detail: error.detail });
+      return;
+    }
+    console.error(`falha ao renderizar LaTeX gerado: ${errorMessage(error)}`);
+    sendJson(res, 500, { error: "Falha ao renderizar PDF" });
+  }
+}
+
 function createServer(config: Config, renderer: PdfRenderer, latexRenderer: LatexRenderer): http.Server {
   const route = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
@@ -202,6 +295,15 @@ function createServer(config: Config, renderer: PdfRenderer, latexRenderer: Late
         return;
       }
       await handleLatex(req, res, latexRenderer);
+      return;
+    }
+
+    if (pathname === "/api/resumes/generate") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "Método não permitido" }, { Allow: "POST" });
+        return;
+      }
+      await handleGenerate(req, res, latexRenderer, config);
       return;
     }
 
