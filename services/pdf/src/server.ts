@@ -3,7 +3,9 @@ import { listTemplates } from "@/config/templates";
 import { isAuthorized } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
 import { PdfRenderer, QueueFullError } from "./pdf";
+import { LatexRenderer, LatexCompileError, QueueFullError as LatexQueueFullError } from "./latex";
 import { parseRenderRequest } from "./validate";
+import { parseLatexRequest } from "./validate-latex";
 
 const MAX_BODY_BYTES = 1_048_576;
 const TOO_LARGE_MESSAGE = "Corpo maior que 1 MB";
@@ -100,7 +102,65 @@ async function handlePdf(req: http.IncomingMessage, res: http.ServerResponse, re
   }
 }
 
-function createServer(config: Config, renderer: PdfRenderer): http.Server {
+async function handleLatex(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  renderer: LatexRenderer
+): Promise<void> {
+  const declaredLength = Number(req.headers["content-length"] ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    sendTooLarge(res);
+    return;
+  }
+
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      sendTooLarge(res);
+      return;
+    }
+    throw error;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    sendJson(res, 400, { error: "Corpo deve ser JSON válido" });
+    return;
+  }
+
+  const parsed = parseLatexRequest(body);
+  if (!parsed.ok) {
+    sendJson(res, 400, { error: parsed.error });
+    return;
+  }
+
+  try {
+    const pdf = await renderer.render(parsed.value.latex);
+    res.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": 'attachment; filename="curriculo.pdf"',
+      "Content-Length": pdf.length,
+    });
+    res.end(pdf);
+  } catch (error) {
+    if (error instanceof LatexQueueFullError) {
+      sendJson(res, 503, { error: "Serviço ocupado. Tente novamente em instantes." }, { "Retry-After": "5" });
+      return;
+    }
+    if (error instanceof LatexCompileError) {
+      sendJson(res, 422, { error: "LaTeX não compilou", detail: error.detail });
+      return;
+    }
+    console.error(`falha ao renderizar LaTeX: ${errorMessage(error)}`);
+    sendJson(res, 500, { error: "Falha ao renderizar PDF" });
+  }
+}
+
+function createServer(config: Config, renderer: PdfRenderer, latexRenderer: LatexRenderer): http.Server {
   const route = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
 
@@ -133,6 +193,15 @@ function createServer(config: Config, renderer: PdfRenderer): http.Server {
         return;
       }
       await handlePdf(req, res, renderer);
+      return;
+    }
+
+    if (pathname === "/api/resumes/latex") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "Método não permitido" }, { Allow: "POST" });
+        return;
+      }
+      await handleLatex(req, res, latexRenderer);
       return;
     }
 
@@ -182,7 +251,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const server = createServer(config, renderer);
+  const latexRenderer = new LatexRenderer(config);
+
+  const server = createServer(config, renderer, latexRenderer);
   server.listen(config.port, "0.0.0.0", () => {
     console.log(`serviço de PDF ouvindo na porta ${config.port}`);
   });
