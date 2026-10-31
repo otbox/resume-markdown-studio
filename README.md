@@ -105,6 +105,8 @@ Compensações do Chromium em container: roda com `--no-sandbox`, como usuário 
 - `services/pdf/src/pdf.ts`: pool do Chromium, fila FIFO e tempo limite.
 - `services/pdf/src/latex.ts`: compila `.tex` com `pdflatex` (duas passadas) em diretório temporário descartável, `-no-shell-escape`. Mesma política de fila FIFO.
 - `services/pdf/src/validate-latex.ts`: valida o corpo `{ latex }` e barra comandos de arquivo/shell (`\input`, `\include`, `\write18`, `\openin`, `\openout`).
+- `services/pdf/src/gemini.ts`: chama o Gemini (`@google/generative-ai`) para gerar o `.tex` a partir de perfil + vaga. Prompt e template em sincronia com `src/lib/gemini/generate-resume-latex.ts` do app.
+- `services/pdf/src/validate-generate.ts`: valida o corpo `{ profile, job, jobAnalysis? }` da rota de geração por IA.
 - `services/pdf/src/render-html.tsx`: HTML das páginas A4.
 - `services/pdf/Dockerfile`: imagem `linux/arm64`. O builder roda na arquitetura do runner. O estágio final instala `chromium`, `fonts-inter`, `fonts-liberation` e o conjunto texlive (`texlive-latex-base`, `-latex-recommended`, `-latex-extra`, `-fonts-recommended`, `-lang-portuguese`, `-lang-english`, `lmodern`) pelo apt do Debian. Não usa o Chromium snap nem o `texlive-full`.
 
@@ -115,7 +117,8 @@ Compensações do Chromium em container: roda com `--no-sandbox`, como usuário 
 | GET | `/health` | não | `200 {"status":"ok"}` |
 | GET | `/api/templates` | sim | Lista `[{ id, name, description }]` |
 | POST | `/api/resumes` | sim | Gera o PDF a partir de Markdown |
-| POST | `/api/resumes/latex` | sim | Gera o PDF a partir de LaTeX |
+| POST | `/api/resumes/latex` | sim | Gera o PDF a partir de LaTeX pronto |
+| POST | `/api/resumes/generate` | sim | Perfil + vaga → Gemini gera o LaTeX → PDF |
 
 Auth: `Authorization: Bearer <PDF_API_KEY>`. Sem chave configurada, a auth fica desligada (somente desenvolvimento).
 
@@ -129,7 +132,23 @@ Corpo de `POST /api/resumes/latex` (JSON, máximo 1 MB; o `.tex` em si, máximo 
 - Respostas: `200` (`application/pdf`), `400` (corpo inválido ou comando não permitido), `413` (corpo maior que 1 MB), `422` (`{"error","detail"}` quando o LaTeX não compila, com o trecho do log), `503` (fila cheia).
 - Variáveis extras: `LATEX_ENGINE` (padrão `pdflatex`), `LATEX_TIMEOUT_MS` (padrão `30000`).
 
-O workflow de deploy já cobre esta rota: os caminhos `services/pdf/**` disparam o build, e o compose não muda.
+Corpo de `POST /api/resumes/generate` (JSON, máximo 1 MB; cada campo de texto, máximo 100 KB):
+
+```json
+{
+  "profile": "# Ana Souza | Engenheira de Dados\n> ana@exemplo.com\n...",
+  "job": "texto completo da vaga",
+  "jobAnalysis": { "keywords": ["Python", "SQL"] }
+}
+```
+
+- `profile` e `job`: obrigatórios, texto. `jobAnalysis`: opcional, qualquer JSON (ajuda nas palavras-chave).
+- O fluxo é: Gemini escreve o `.tex` → a mesma trava de segurança da rota `/latex` (barra `\input`, `\write18`, etc.) → `pdflatex` compila → PDF.
+- Não usa banco: o backend recebe perfil e vaga no corpo da requisição.
+- Respostas: `200` (`application/pdf`), `400` (corpo inválido), `413` (corpo maior que 1 MB), `422` (a IA devolveu LaTeX inválido ou que não compila), `501` (`GEMINI_API_KEY` ausente), `502` (falha na chamada ao Gemini), `503` (fila cheia).
+- Variável extra: `GEMINI_API_KEY` (obrigatória para esta rota; sem ela, a rota responde `501` e as outras seguem funcionando), `GEMINI_MODEL` (padrão `gemini-2.5-flash`).
+
+O workflow de deploy já cobre estas rotas: os caminhos `services/pdf/**` disparam o build, e o compose não muda. Para a geração por IA, adicione `GEMINI_API_KEY` ao `.env` da VM.
 
 Corpo de `POST /api/resumes` (JSON, máximo 1 MB):
 
