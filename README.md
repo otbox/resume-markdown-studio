@@ -103,8 +103,10 @@ Compensações do Chromium em container: roda com `--no-sandbox`, como usuário 
 - `services/pdf/src/server.ts`: rotas HTTP.
 - `services/pdf/src/validate.ts`: validação do corpo e mesclagem de `theme` e `layout` sobre o template.
 - `services/pdf/src/pdf.ts`: pool do Chromium, fila FIFO e tempo limite.
+- `services/pdf/src/latex.ts`: compila `.tex` com `pdflatex` (duas passadas) em diretório temporário descartável, `-no-shell-escape`. Mesma política de fila FIFO.
+- `services/pdf/src/validate-latex.ts`: valida o corpo `{ latex }` e barra comandos de arquivo/shell (`\input`, `\include`, `\write18`, `\openin`, `\openout`).
 - `services/pdf/src/render-html.tsx`: HTML das páginas A4.
-- `services/pdf/Dockerfile`: imagem `linux/arm64`. O builder roda na arquitetura do runner. O estágio final instala `chromium`, `fonts-inter` e `fonts-liberation` pelo apt do Debian. Não usa o Chromium snap.
+- `services/pdf/Dockerfile`: imagem `linux/arm64`. O builder roda na arquitetura do runner. O estágio final instala `chromium`, `fonts-inter`, `fonts-liberation` e o conjunto texlive (`texlive-latex-base`, `-latex-recommended`, `-latex-extra`, `-fonts-recommended`, `-lang-portuguese`, `-lang-english`, `lmodern`) pelo apt do Debian. Não usa o Chromium snap nem o `texlive-full`.
 
 ### API
 
@@ -112,9 +114,22 @@ Compensações do Chromium em container: roda com `--no-sandbox`, como usuário 
 |---|---|---|---|
 | GET | `/health` | não | `200 {"status":"ok"}` |
 | GET | `/api/templates` | sim | Lista `[{ id, name, description }]` |
-| POST | `/api/resumes` | sim | Gera o PDF |
+| POST | `/api/resumes` | sim | Gera o PDF a partir de Markdown |
+| POST | `/api/resumes/latex` | sim | Gera o PDF a partir de LaTeX |
 
 Auth: `Authorization: Bearer <PDF_API_KEY>`. Sem chave configurada, a auth fica desligada (somente desenvolvimento).
+
+Corpo de `POST /api/resumes/latex` (JSON, máximo 1 MB; o `.tex` em si, máximo 256 KB):
+
+```json
+{ "latex": "\\documentclass[a4paper,10pt]{article}\n...\\end{document}" }
+```
+
+- `latex`: obrigatório. Precisa ter `\documentclass` e `\begin{document}`.
+- Respostas: `200` (`application/pdf`), `400` (corpo inválido ou comando não permitido), `413` (corpo maior que 1 MB), `422` (`{"error","detail"}` quando o LaTeX não compila, com o trecho do log), `503` (fila cheia).
+- Variáveis extras: `LATEX_ENGINE` (padrão `pdflatex`), `LATEX_TIMEOUT_MS` (padrão `30000`).
+
+O workflow de deploy já cobre esta rota: os caminhos `services/pdf/**` disparam o build, e o compose não muda.
 
 Corpo de `POST /api/resumes` (JSON, máximo 1 MB):
 

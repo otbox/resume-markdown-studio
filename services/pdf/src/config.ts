@@ -13,6 +13,8 @@ export interface Config {
   queueMax: number;
   chromePath: string | undefined;
   renderTimeoutMs: number;
+  latexEngine: string;
+  latexTimeoutMs: number;
 }
 
 function parseIntInRange(raw: string | undefined, fallback: number, min: number, max: number, name: string): number {
@@ -40,5 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     queueMax: parseIntInRange(env.RENDER_QUEUE_MAX, 10, 0, 100, "RENDER_QUEUE_MAX"),
     chromePath: env.PUPPETEER_EXECUTABLE_PATH?.trim() || undefined,
     renderTimeoutMs: 30_000,
+    latexEngine: env.LATEX_ENGINE?.trim() || "pdflatex",
+    latexTimeoutMs: parseIntInRange(env.LATEX_TIMEOUT_MS, 30_000, 1_000, 120_000, "LATEX_TIMEOUT_MS"),
   };
 }

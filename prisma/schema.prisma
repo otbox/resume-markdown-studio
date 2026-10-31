@@ -139,6 +139,7 @@ model GeneratedResume {
   jobApplication   JobApplication? @relation(fields: [jobApplicationId], references: [id], onDelete: SetNull)
   templateId       String?
   markdownContent  String          @db.Text
+  latexContent     String?         @db.Text
   version          Int             @default(1)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt

@@ -22,8 +22,15 @@ RUN npm --prefix services/pdf run build \
 FROM node:22-bookworm-slim AS runtime
 
 # Chromium do Debian (sem download no npm) e fonte Inter, usada pelo tema padrão.
+# texlive mínimo para a rota /api/resumes/latex: base + classes/pacotes
+# recomendados + extra (enumitem, titlesec) + fontes + idiomas + lmodern
+# (fontes T1 escaláveis exigidas pelo microtype). Não instala o texlive-full.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium fonts-inter fonts-liberation ca-certificates \
+ && apt-get install -y --no-install-recommends \
+      chromium fonts-inter fonts-liberation ca-certificates \
+      texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+      texlive-fonts-recommended texlive-lang-portuguese texlive-lang-english \
+      lmodern \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
